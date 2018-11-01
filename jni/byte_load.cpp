@@ -23,7 +23,7 @@
 
 #include "packer.h"
 #include "dex_header.h"
-#include "elfGotHook/logger.h"
+#include "log.h"
 #include "utils.h"
 
 using namespace std;

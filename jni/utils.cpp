@@ -14,7 +14,7 @@
 #include <fcntl.h>
 #include <sys/mman.h>
 
-#include "elfGotHook/logger.h"
+#include "log.h"
 
 #if 0
 unsigned int search_symbol_fromelf(char *lib_path, unsigned int lib_base_addr, char *target)

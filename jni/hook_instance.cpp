@@ -13,7 +13,7 @@
 #include <sys/mman.h>
 #include <unistd.h>
 
-#include "elfGotHook/logger.h"
+#include "log.h"
 #include "packer.h"
 
 #define kDexMagic "dex\n"
@@ -31,6 +31,11 @@ pid_t (*old_fork)(void);
 int new_open(const char *pathname, int flags, mode_t mode)
 {
     int result = old_open(pathname, flags, mode);
+    LOGD("[+]my open pathname:%s", pathname);
+    if (strlen(g_fake_dex_magic) > 1)
+    {
+        LOGD("[+]my open g_fake_dex_magic:%s", g_fake_dex_magic);
+    }
 
     if (strstr(pathname, g_fake_dex_magic))
     {
@@ -46,6 +51,7 @@ int new_open(const char *pathname, int flags, mode_t mode)
 int new_fstat(int fd, struct stat *buf)
 {
     int result = old_fstat(fd, buf);
+    LOGD("[+]my fstat");
 
     char fdlinkstr[128] = {0};
     char linkPath[256] = {0};
@@ -54,7 +60,7 @@ int new_fstat(int fd, struct stat *buf)
     memset(linkPath, 0, 256);
 
     int pid = getpid();
-    snprintf(fdlinkstr, 128, "/proc/%ld/fd/%d", pid, fd);
+    snprintf(fdlinkstr, 128, "/proc/%d/fd/%d", pid, fd);
     
     if (readlink(fdlinkstr, linkPath, 256) >= 0)
     {
@@ -80,7 +86,7 @@ ssize_t new_read(int fd, void *buf, size_t count)
     memset(fdlinkstr, 0, 128);
     memset(linkPath, 0, 256);
     int pid = getpid();
-    snprintf(fdlinkstr, 128, "/proc/%ld/fd/%d", pid, fd);
+    snprintf(fdlinkstr, 128, "/proc/%d/fd/%d", pid, fd);
     if (readlink(fdlinkstr, linkPath, 256) >= 0)
     {
         // LOGD("[+]my read file:%s,count:%d",linkPath,count);
@@ -95,6 +101,7 @@ ssize_t new_read(int fd, void *buf, size_t count)
     {
         LOGD("[-]my read readlink error");
     }
+    LOGD("[+]my read");
     return old_read(fd, buf, count);
 }
 
@@ -106,7 +113,7 @@ ssize_t new_read_chk(int fd, void *buf, size_t nbytes, size_t buflen)
     memset(fdlinkstr, 0, 128);
     memset(linkPath, 0, 256);
     int pid = getpid();
-    snprintf(fdlinkstr, 128, "/proc/%ld/fd/%d", pid, fd);
+    snprintf(fdlinkstr, 128, "/proc/%d/fd/%d", pid, fd);
     if (readlink(fdlinkstr, linkPath, 256) >= 0)
     {
         // LOGD("[+]my read_chk file:%s,nbytes:%d,buflen:%d",linkPath,nbytes,buflen);
@@ -131,6 +138,7 @@ ssize_t new_read_chk(int fd, void *buf, size_t nbytes, size_t buflen)
     {
         LOGD("[-]fun my read_chk readlink error");
     }
+    LOGD("[+]my read_chk");
     return old_read_chk(fd, buf, nbytes, buflen);
 }
 
@@ -142,7 +150,7 @@ void *new_mmap(void *start, size_t length, int prot, int flags, int fd, off_t of
     memset(fdlinkstr, 0, 128);
     memset(linkPath, 0, 256);
     int pid = (int)getpid();
-    snprintf(fdlinkstr, 128, "/proc/%ld/fd/%d", pid, fd);
+    snprintf(fdlinkstr, 128, "/proc/%d/fd/%d", pid, fd);
 
     if (readlink(fdlinkstr, linkPath, 256) < 0)
     {
@@ -152,9 +160,10 @@ void *new_mmap(void *start, size_t length, int prot, int flags, int fd, off_t of
 
     if (strstr(linkPath,(char*)g_fake_dex_magic))
     {
-        LOGD("[+]mmap linkpath:%s,size:%d", linkPath, length);
+        LOGD("[+]mmap linkpath:%s,size:%zu", linkPath, length);
         return g_decrypt_base;
     }
+    LOGD("[+]my mmap");
     return old_mmap(start, length, prot, flags, fd, offset);
 }
 
@@ -162,9 +171,10 @@ int new_munmap(void *start, size_t length)
 {
     if ((start == g_decrypt_base) || (length == g_page_size))
     {
-        LOGD("[+]munmap start:%p,length:%d", start, length);
+        LOGD("[+]munmap start:%p,length:%zu", start, length);
         return 0;
     }
+    LOGD("[+]my munmap");
     return old_munmap(start, length);
 }
 

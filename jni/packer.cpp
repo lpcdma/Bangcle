@@ -14,17 +14,19 @@
 #include <sys/mman.h>
 #include <vector>
 #include <bits/unique_ptr.h>
+#include <mutex>
+#include <string.h>
+#include <unistd.h>
 
 #include "common.h"
 #include "dex_header.h"
 #include "utils.h"
 #include "byte_load.h"
 #include "hook_instance.h"
-#include "elfGotHook/tools.h"
-#include "elfGotHook/elf_reader.h"
 // #include "openssl/openssl/aes.h"
 
 #include "xhook.h"
+#include "log.h"
 
 #define CBC 1
 #define CTR 1
@@ -33,9 +35,11 @@
 
 // #define PAGE_MASK 0xfffff000
 // #define PAGE_START(x) ((x)&PAGE_MASK)
-#define PAGE_SIZE 4096
-#define PAGE_OFFSET(x) ((x) & ~PAGE_MASK)
-#define PAGE_END(x) PAGE_START((x) + (PAGE_SIZE - 1))
+// #define PAGE_SIZE 4096
+// #define PAGE_OFFSET(x) ((x) & ~PAGE_MASK)
+#define PAGE_START(addr) ((addr) & PAGE_MASK)
+#define PAGE_END(addr)   (PAGE_START(addr + sizeof(uintptr_t) - 1) + PAGE_SIZE)
+// #define PAGE_COVER(addr) (PAGE_END(addr) - PAGE_START(addr))
 
 #if defined(__aarch64__)
 #define LIB_ART_PATH "/system/lib64/libart.so"
@@ -92,6 +96,8 @@ unsigned char MINIDEX[292] = {
     0x06, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x84, 0x00, 0x00, 0x00, 0x02, 0x20, 0x00, 0x00,
     0x03, 0x00, 0x00, 0x00, 0xA4, 0x00, 0x00, 0x00, 0x00, 0x10, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00,
     0xD8, 0x00, 0x00, 0x00};
+
+std::mutex g_pages_mutex;
 
 void write_mix_dex(const char *minidex)
 {
@@ -744,55 +750,19 @@ void replace_cookie(JNIEnv *env, jobject mini_dex_obj, void *c_dex_cookie, int s
     }
 }
 
-jobject hook_load_dex_internally(JNIEnv *env, const char *art_path, char *inPath, char *outPath)
+jobject hook_load_dex_internally(JNIEnv *env, char *inPath, char *outPath)
 {
-    void *art_base = get_module_base(getpid(), art_path);
-    if (!art_base)
-    {
-        LOGE("[-]get lib %s base failed", art_path);
-        return NULL;
-    }
+    g_pages_mutex.lock();
 
-#if 0
-    ElfReader elfReader(art_path, art_base);
-    if (0 != elfReader.parse())
-    {
-        LOGE("failed to parse %s in %d maps at %p", LIB_ART_PATH, getpid(), art_base);
-        return NULL;
-    }
-    elfReader.hook("open", (void *)new_open, (void **)&old_open);
-    elfReader.hook("read", (void *)new_read, (void **)&old_read);
-    elfReader.hook("mmap", (void *)new_mmap, (void **)&old_mmap);
-    elfReader.hook("munmap", (void *)new_munmap, (void **)&old_munmap);
-    elfReader.hook("__read_chk", (void *)new_read_chk, (void **)&old_read_chk);
-    elfReader.hook("fstat", (void *)new_fstat, (void **)&old_fstat);
-    elfReader.hook("fork", (void *)new_fork, (void **)&old_fork);
     LOGD("[+]Load fake dex inPath:%s,outPath:%s", inPath, outPath);
     jobject faked_dex_obj = load_dex_fromfile(env, inPath, outPath);
     LOGD("[+]Load fake dex finished");
     //恢复fork和fstat的hook
-    elfReader.hook("fork", (void *)old_fork, (void **)&old_fork);
-    elfReader.hook("fstat", (void *)old_fstat, (void **)&old_fstat);
-    return faked_dex_obj;
-#else
-    xhook_enable_debug(1);
-    xhook_register(art_path, "open", (void *)new_open, (void **)&old_open);
-    xhook_register(art_path, "read", (void *)new_read, (void **)&old_read);
-    xhook_register(art_path, "mmap", (void *)new_mmap, (void **)&old_mmap);
-    xhook_register(art_path, "munmap", (void *)new_munmap, (void **)&old_munmap);
-    xhook_register(art_path, "__read_chk", (void *)new_read_chk, (void **)&old_read_chk);
-    xhook_register(art_path, "fstat", (void *)new_fstat, (void **)&old_fstat);
-    xhook_register(art_path, "fork", (void *)new_fork, (void **)&old_fork);
-    xhook_refresh(1);
-    LOGD("[+]Load fake dex inPath:%s,outPath:%s", inPath, outPath);
-    jobject faked_dex_obj = load_dex_fromfile(env, inPath, outPath);
-    LOGD("[+]Load fake dex finished");
-    //恢复fork和fstat的hook
-    xhook_ignore(art_path, "fork");
-    xhook_ignore(art_path, "fstat");
+    xhook_ignore(LIB_ART_PATH, "fork");
+    xhook_ignore(LIB_ART_PATH, "fstat");
     xhook_refresh(1);
     return faked_dex_obj;
-#endif
+    g_pages_mutex.unlock();
 }
 
 
@@ -898,7 +868,13 @@ void mem_loadDex(JNIEnv *env, jobject ctx, const char *dex_path)
             sprintf((char*)g_fake_dex_magic,"%s/mini.dex",PACKER_MAGIC);
             LOGD("[+]g_faked_dex_magic:%s",(char*)g_fake_dex_magic);
             // 加载fake_dex
-            mini_dex_obj = hook_load_dex_internally(env, (const char *)LIB_ART_PATH, (char *)inPath, outPath);
+            mini_dex_obj = hook_load_dex_internally(env, (char *)inPath, outPath);
+            if (mini_dex_obj != NULL)
+            {
+                LOGD("[+]hook_load_dex_internally mini_dex_obj:%p", mini_dex_obj);
+            } else {
+                LOGD("[+]hook_load_dex_internally mini_dex_obj:%s","NULL");
+            }
             
             make_dex_elements(env, classLoader, mini_dex_obj);
             LOGD("[+]using second plan load dex finished");
@@ -981,6 +957,15 @@ void native_attachBaseContext(JNIEnv *env, jobject thiz, jobject ctx)
     }
     //从assets目录提取加密dex
     extract_file(env, ctx, jiaguPath, JIAMI_MAGIC);
+    xhook_enable_debug(1);
+    xhook_register(LIB_ART_PATH, "open", (void *)new_open, (void **)&old_open);
+    xhook_register(LIB_ART_PATH, "read", (void *)new_read, (void **)&old_read);
+    xhook_register(LIB_ART_PATH, "mmap", (void *)new_mmap, (void **)&old_mmap);
+    xhook_register(LIB_ART_PATH, "munmap", (void *)new_munmap, (void **)&old_munmap);
+    xhook_register(LIB_ART_PATH, "__read_chk", (void *)new_read_chk, (void **)&old_read_chk);
+    xhook_register(LIB_ART_PATH, "fstat", (void *)new_fstat, (void **)&old_fstat);
+    xhook_register(LIB_ART_PATH, "fork", (void *)new_fork, (void **)&old_fork);
+    xhook_refresh(1);
     mem_loadDex(env, ctx, jiaguPath);
 } // native_attachBaseContext
 

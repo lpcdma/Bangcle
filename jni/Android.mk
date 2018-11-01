@@ -8,16 +8,13 @@ LOCAL_PATH := $(call my-dir)
 
 include $(CLEAR_VARS)
 LOCAL_MODULE    := dexload
-LOCAL_C_INCLUDES +=$(LOCAL_PATH)/elfGotHook/
 LOCAL_C_INCLUDES +=$(LOCAL_PATH)/xhook/
 # LOCAL_STATIC_LIBRARIES := static_openssl_crypto
 # LOCAL_STATIC_LIBRARIES := static_openssl_ssl
 LOCAL_SRC_FILES := packer.cpp  \
-									 hook_instance.cpp \
-									 byte_load.cpp \
-									 utils.cpp
-LOCAL_SRC_FILES += elfGotHook/elf_reader.cpp   \
-									 elfGotHook/tools.cpp
+     			 hook_instance.cpp \
+     			 byte_load.cpp \
+     			 utils.cpp
 LOCAL_SRC_FILES +=aes.c
 LOCAL_SRC_FILES  += xhook/xhook.c \
                     xhook/xh_core.c \
