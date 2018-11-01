@@ -753,7 +753,18 @@ void replace_cookie(JNIEnv *env, jobject mini_dex_obj, void *c_dex_cookie, int s
 jobject hook_load_dex_internally(JNIEnv *env, char *inPath, char *outPath)
 {
     g_pages_mutex.lock();
-
+    if (g_sdk_int < 24)
+    {
+        xhook_enable_debug(1);
+        xhook_register(LIB_ART_PATH, "open", (void *)new_open, (void **)&old_open);
+        xhook_register(LIB_ART_PATH, "read", (void *)new_read, (void **)&old_read);
+        xhook_register(LIB_ART_PATH, "mmap", (void *)new_mmap, (void **)&old_mmap);
+        xhook_register(LIB_ART_PATH, "munmap", (void *)new_munmap, (void **)&old_munmap);
+        xhook_register(LIB_ART_PATH, "__read_chk", (void *)new_read_chk, (void **)&old_read_chk);
+        xhook_register(LIB_ART_PATH, "fstat", (void *)new_fstat, (void **)&old_fstat);
+        xhook_register(LIB_ART_PATH, "fork", (void *)new_fork, (void **)&old_fork);
+        xhook_refresh(1);
+    }
     LOGD("[+]Load fake dex inPath:%s,outPath:%s", inPath, outPath);
     jobject faked_dex_obj = load_dex_fromfile(env, inPath, outPath);
     LOGD("[+]Load fake dex finished");
@@ -957,15 +968,18 @@ void native_attachBaseContext(JNIEnv *env, jobject thiz, jobject ctx)
     }
     //从assets目录提取加密dex
     extract_file(env, ctx, jiaguPath, JIAMI_MAGIC);
-    xhook_enable_debug(1);
-    xhook_register(LIB_ART_PATH, "open", (void *)new_open, (void **)&old_open);
-    xhook_register(LIB_ART_PATH, "read", (void *)new_read, (void **)&old_read);
-    xhook_register(LIB_ART_PATH, "mmap", (void *)new_mmap, (void **)&old_mmap);
-    xhook_register(LIB_ART_PATH, "munmap", (void *)new_munmap, (void **)&old_munmap);
-    xhook_register(LIB_ART_PATH, "__read_chk", (void *)new_read_chk, (void **)&old_read_chk);
-    xhook_register(LIB_ART_PATH, "fstat", (void *)new_fstat, (void **)&old_fstat);
-    xhook_register(LIB_ART_PATH, "fork", (void *)new_fork, (void **)&old_fork);
-    xhook_refresh(1);
+    if (g_sdk_int >= 24)
+    {
+        xhook_enable_debug(1);
+        xhook_register(LIB_ART_PATH, "open", (void *)new_open, (void **)&old_open);
+        xhook_register(LIB_ART_PATH, "read", (void *)new_read, (void **)&old_read);
+        xhook_register(LIB_ART_PATH, "mmap", (void *)new_mmap, (void **)&old_mmap);
+        xhook_register(LIB_ART_PATH, "munmap", (void *)new_munmap, (void **)&old_munmap);
+        xhook_register(LIB_ART_PATH, "__read_chk", (void *)new_read_chk, (void **)&old_read_chk);
+        xhook_register(LIB_ART_PATH, "fstat", (void *)new_fstat, (void **)&old_fstat);
+        xhook_register(LIB_ART_PATH, "fork", (void *)new_fork, (void **)&old_fork);
+        xhook_refresh(1);
+    }
     mem_loadDex(env, ctx, jiaguPath);
 } // native_attachBaseContext
 
