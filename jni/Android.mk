@@ -1,4 +1,11 @@
 LOCAL_PATH := $(call my-dir)
+
+# include $(CLEAR_VARS)
+# LOCAL_MODULE            := xhook
+# LOCAL_SRC_FILES         := $(LOCAL_PATH)/libxhook/libs/$(TARGET_ARCH_ABI)/libxhook.so
+# LOCAL_EXPORT_C_INCLUDES := $(LOCAL_PATH)/libxhook/jni
+# include $(PREBUILT_SHARED_LIBRARY)
+
 include $(CLEAR_VARS)
 LOCAL_MODULE    := dexload
 LOCAL_C_INCLUDES +=$(LOCAL_PATH)/elfGotHook/
@@ -12,14 +19,13 @@ LOCAL_SRC_FILES := packer.cpp  \
 LOCAL_SRC_FILES += elfGotHook/elf_reader.cpp   \
 									 elfGotHook/tools.cpp
 LOCAL_SRC_FILES +=aes.c
-# LOCAL_SRC_FILES +=  xhook/xhook.c \
-#                     xhook/xh_core.c \
-#                     xhook/xh_elf.c \
-#                     xhook/xh_jni.c \
-#                     xhook/xh_log.c \
-#                     xhook/xh_util.c \
-#                     xhook/xh_version.c
-
+LOCAL_SRC_FILES  += xhook/xhook.c \
+                    xhook/xh_core.c \
+                    xhook/xh_elf.c \
+                    xhook/xh_jni.c \
+                    xhook/xh_log.c \
+                    xhook/xh_util.c \
+                    xhook/xh_version.c
 
 LOCAL_CFLAGS := -Wall
 # LOCAL_CFLAGS +=-fpermissive

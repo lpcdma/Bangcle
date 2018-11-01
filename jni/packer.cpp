@@ -24,6 +24,8 @@
 #include "elfGotHook/elf_reader.h"
 // #include "openssl/openssl/aes.h"
 
+#include "xhook.h"
+
 #define CBC 1
 #define CTR 1
 #define ECB 1
@@ -751,7 +753,7 @@ jobject hook_load_dex_internally(JNIEnv *env, const char *art_path, char *inPath
         return NULL;
     }
 
-#if 1
+#if 0
     ElfReader elfReader(art_path, art_base);
     if (0 != elfReader.parse())
     {
@@ -771,6 +773,24 @@ jobject hook_load_dex_internally(JNIEnv *env, const char *art_path, char *inPath
     //恢复fork和fstat的hook
     elfReader.hook("fork", (void *)old_fork, (void **)&old_fork);
     elfReader.hook("fstat", (void *)old_fstat, (void **)&old_fstat);
+    return faked_dex_obj;
+#else
+    xhook_enable_debug(1);
+    xhook_register(art_path, "open", (void *)new_open, (void **)&old_open);
+    xhook_register(art_path, "read", (void *)new_read, (void **)&old_read);
+    xhook_register(art_path, "mmap", (void *)new_mmap, (void **)&old_mmap);
+    xhook_register(art_path, "munmap", (void *)new_munmap, (void **)&old_munmap);
+    xhook_register(art_path, "__read_chk", (void *)new_read_chk, (void **)&old_read_chk);
+    xhook_register(art_path, "fstat", (void *)new_fstat, (void **)&old_fstat);
+    xhook_register(art_path, "fork", (void *)new_fork, (void **)&old_fork);
+    xhook_refresh(1);
+    LOGD("[+]Load fake dex inPath:%s,outPath:%s", inPath, outPath);
+    jobject faked_dex_obj = load_dex_fromfile(env, inPath, outPath);
+    LOGD("[+]Load fake dex finished");
+    //恢复fork和fstat的hook
+    xhook_ignore(art_path, "fork");
+    xhook_ignore(art_path, "fstat");
+    xhook_refresh(1);
     return faked_dex_obj;
 #endif
 }
@@ -831,6 +851,10 @@ void mem_loadDex(JNIEnv *env, jobject ctx, const char *dex_path)
 
     LOGD("[+]After decrypt dex magic:0x%x,size:%d,page_size:%d", *(int *)g_decrypt_base, g_dex_size, g_page_size);
 
+    sprintf(inPath, "%s/mini.dex", g_jiagu_dir);
+    sprintf(outPath, "%s/mini.oat", g_jiagu_dir);
+    write_mix_dex(inPath);
+
     if (!g_isArt)
     {
         jint mCookie = mem_loadDex_dvm(env, (char *)szDexPath);
@@ -838,15 +862,13 @@ void mem_loadDex(JNIEnv *env, jobject ctx, const char *dex_path)
         jclass DexFileClass = env->FindClass("dalvik/system/DexFile");
         jfieldID cookie_field = env->GetFieldID(DexFileClass, "mCookie", "I");
         //replace cookie
+        mini_dex_obj = load_dex_fromfile(env, inPath, outPath);
         env->SetIntField(mini_dex_obj, cookie_field, mCookie);
         make_dex_elements(env, classLoader, mini_dex_obj);
         return;
     }
     else
     {
-        sprintf(inPath, "%s/mini.dex", g_jiagu_dir);
-        sprintf(outPath, "%s/mini.oat", g_jiagu_dir);
-        write_mix_dex(inPath);
         g_ArtHandle = get_lib_handle(LIB_ART_PATH);
         if (g_ArtHandle)
         {
