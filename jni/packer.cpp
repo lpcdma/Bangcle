@@ -191,6 +191,58 @@ extern "C"
 }
 #endif
 
+struct MemMapping {
+    void*   addr;           /* start of data */
+    size_t  length;         /* length of data */
+
+    void*   baseAddr;       /* page-aligned base address */
+    size_t  baseLength;     /* length of mapping */
+};
+
+struct DvmDex {
+    /* pointer to the DexFile we're associated with */
+    void*            pDexFile;
+
+    /* clone of pDexFile->pHeader (it's used frequently enough) */
+    void*    pHeader;
+
+    /* interned strings; parallel to "stringIds" */
+    void* pResStrings;
+
+    /* resolved classes; parallel to "typeIds" */
+    void* pResClasses;
+
+    /* resolved methods; parallel to "methodIds" */
+    void*     pResMethods;
+
+    /* resolved instance fields; parallel to "fieldIds" */
+    /* (this holds both InstField and StaticField) */
+    void*      pResFields;
+
+    /* interface method lookup cache */
+    void* pInterfaceCache;
+
+    /* shared memory region with file contents */
+    bool                isMappedReadOnly;
+    MemMapping          memMap;
+};
+
+struct RawDexFile {
+    char*       cacheFileName;
+    DvmDex*     pDvmDex;
+};
+
+struct DexOrJar {
+    char*       fileName;
+    bool        isDex;
+    bool        okayToFree;
+    RawDexFile* pRawDexFile;
+    void*    pJarFile;
+    u1*         pDexMemory; // malloc()ed memory, if any
+};
+
+
+
 jint mem_loadDex_dvm(JNIEnv *env, char *szPath)
 {
     void (*openDexFile)(const u4 *args, union JValue *pResult);
@@ -213,6 +265,9 @@ jint mem_loadDex_dvm(JNIEnv *env, char *szPath)
     ao->length = g_dex_size;
     memcpy(arr + 16, (char *)g_decrypt_base, g_dex_size);
     munmap((char *)g_decrypt_base, g_dex_size);
+    MemMapping memMap;
+    memMap.addr = (void*)(arr + 16);
+    memMap.length = g_dex_size;
 
     u4 args[] = {(u4)(long)ao};
     union JValue pResult;
@@ -220,6 +275,13 @@ jint mem_loadDex_dvm(JNIEnv *env, char *szPath)
     {
         openDexFile(args, &pResult);
         jint mCookie = (jint)(long)pResult.l;
+        DexOrJar* open_ret = (DexOrJar*)pResult.l;
+        LOGE("[-]open_ret = %p", open_ret);
+        LOGE("[-]open_ret->pRawDexFile = %p", open_ret->pRawDexFile);
+        LOGE("[-]open_ret->pRawDexFile->pDvmDex = %p", open_ret->pRawDexFile->pDvmDex);
+        LOGE("[-]open_ret->pRawDexFile->pDvmDex->memMap.addr = %p", open_ret->pRawDexFile->pDvmDex->memMap.addr);
+        LOGE("[-]len = %d", open_ret->pRawDexFile->pDvmDex->memMap.length);
+        open_ret->pRawDexFile->pDvmDex->memMap = memMap;
         return mCookie;
     }
     else
