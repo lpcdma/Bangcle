@@ -13,7 +13,7 @@
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <vector>
-#include <bits/unique_ptr.h>
+// #include <bits/unique_ptr.h>
 #include <mutex>
 #include <string.h>
 #include <unistd.h>
@@ -27,6 +27,7 @@
 
 #include "xhook.h"
 #include "log.h"
+#include "solist.h"
 
 #define CBC 1
 #define CTR 1
@@ -241,6 +242,57 @@ struct DexOrJar {
     u1*         pDexMemory; // malloc()ed memory, if any
 };
 
+#ifndef HEXDUMP_COLS
+#define HEXDUMP_COLS 16
+#endif
+
+void hex_dump(void *mem, unsigned int len) {
+
+    char szTmp[40960] = {0x00};
+    unsigned int i, j;
+
+    for (i = 0; i < len + ((len % HEXDUMP_COLS) ? (HEXDUMP_COLS - len % HEXDUMP_COLS) : 0); i++) {
+        /* print offset */
+        if (i % HEXDUMP_COLS == 0) {
+#if defined(__x86_64__)
+            sprintf(&szTmp[strlen(szTmp)], "0x%06x:\t", (unsigned long)mem + i);
+#elif defined(__aarch64__)
+            sprintf(&szTmp[strlen(szTmp)], "0x%06x:\t", (unsigned long)mem + i);
+#elif defined(__mips64)
+            sprintf(&szTmp[strlen(szTmp)], "0x%06x:\t", (unsigned long)mem + i);
+#else
+            sprintf(&szTmp[strlen(szTmp)], "0x%06x:\t", (unsigned int) mem + i);
+#endif
+        }
+
+        /* print hex data */
+        if (i < len) {
+            sprintf(&szTmp[strlen(szTmp)], "%02x ", 0xFF & ((char *) mem)[i]);
+        } else /* end of block, just aligning for ASCII dump */
+        {
+            sprintf(&szTmp[strlen(szTmp)], "   ");
+        }
+
+        /* print ASCII dump */
+        if (i % HEXDUMP_COLS == (HEXDUMP_COLS - 1)) {
+            for (j = i - (HEXDUMP_COLS - 1); j <= i; j++) {
+                if (j >= len) /* end of block, not really printing */
+                {
+                    sprintf(&szTmp[strlen(szTmp)], " ");
+                } else if (((char *) mem)[j] > 0x20 &&
+                           ((char *) mem)[j] < 0x7e) /* printable char */
+                {
+                    sprintf(&szTmp[strlen(szTmp)], "%c", 0xFF & ((char *) mem)[j]);
+                } else /* other char */
+                {
+                    sprintf(&szTmp[strlen(szTmp)], ".");
+                }
+            }
+            sprintf(&szTmp[strlen(szTmp)], "\n");
+        }
+    }
+    LOGD("%s", szTmp);
+}
 
 
 jint mem_loadDex_dvm(JNIEnv *env, char *szPath)
@@ -260,11 +312,15 @@ jint mem_loadDex_dvm(JNIEnv *env, char *szPath)
 
     char *arr;
     arr = (char *)malloc(16 + g_dex_size);
+    memset(arr, 0, 16 + g_dex_size);
     ArrayObject *ao = (ArrayObject *)arr;
-    // LOGD("sizeof ArrayObject:%d",sizeof(ArrayObject));
+    LOGD("sizeof ArrayObject:%d",sizeof(ArrayObject));
     ao->length = g_dex_size;
-    memcpy(arr + 16, (char *)g_decrypt_base, g_dex_size);
+    memcpy(arr + 12, (char *)g_decrypt_base, g_dex_size);
     munmap((char *)g_decrypt_base, g_dex_size);
+    LOGD("ao->clazz ==> %p, ao->lock ==> %d, ao->length ==> %d, ao->contents ==> %p", 
+        ao->clazz, ao->lock, ao->length, ao->contents);
+    hex_dump((void*)ao->contents, 0x80);
     MemMapping memMap;
     memMap.addr = (void*)(arr + 16);
     memMap.length = g_dex_size;
@@ -486,6 +542,9 @@ void *get_lib_handle(const char *lib_path)
         LOGE("[-]get %s handle failed:%s", lib_path, dlerror());
         return NULL;
     }
+    soinfo* s_info = (soinfo*)handle_art;
+    LOGD("%s handle::%p base::%08x length::%08x entry::%08x", lib_path, handle_art,
+        (unsigned int)s_info->base, (unsigned int)s_info->size, (unsigned int)s_info->entry);
     return handle_art;
 }
 
@@ -1239,6 +1298,7 @@ __attribute__((visibility("default"))) JNIEXPORT jint JNI_OnLoad(JavaVM *vm, voi
     {
         return -1;
     }
+    // sleep(10);
     init(env);
     return JNI_VERSION_1_6;
 }

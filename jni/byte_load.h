@@ -2,7 +2,7 @@
 #define _BYTE_LOADER_H
 
 #include <vector>
-#include <bits/unique_ptr.h>
+// #include <bits/unique_ptr.h>
 #include "dex_header.h"
 
 typedef void *(*org1_artDexFileOpenMemory19)(unsigned char const *base, unsigned int size,

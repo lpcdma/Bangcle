@@ -19,7 +19,7 @@
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <vector>
-#include <bits/unique_ptr.h>
+// #include <bits/unique_ptr.h>
 
 #include "packer.h"
 #include "dex_header.h"
@@ -128,8 +128,8 @@ void *mem_loadDex_byte22(void *artHandle, const char *base, size_t size)
 void *mem_loadDex_byte23(void *artHandle, const char *base, size_t size)
 {
 
-    std::string location = "";
-    std::string err_msg;
+    std::string *location = new std::string("");
+    std::string *err_msg = new std::string("");
 
     void *retcookie = malloc(0x78);
     memset(retcookie, 0, (size_t)0x78);
@@ -146,11 +146,14 @@ void *mem_loadDex_byte23(void *artHandle, const char *base, size_t size)
     void *value = func(retcookie,
                        (const unsigned char *)base,
                        size,
-                       location,
+                       *location,
                        dex_header->checksum_,
                        NULL,
                        NULL,
-                       &err_msg);
+                       err_msg);
+
+    delete location;
+    delete err_msg;
 
     void *a = retcookie;
 

@@ -158,7 +158,7 @@ typedef struct
     void *clazz;
     u4   lock;
     u4   length;
-    u1   *contents;
+    u8   contents[1];
 } ArrayObject;
 
 /*typedef struct {
