@@ -33,11 +33,7 @@
 // #include <sys/exec_elf.h>
 
 #define MODULE_NAME  "LOGXX"
-#if defined(KDP_DEBUG) && (KDP_DEBUG > 0)
 #define log(...) {__android_log_print(ANDROID_LOG_ERROR, MODULE_NAME, __VA_ARGS__);}
-#else
-#define log(...)
-#endif
 
 /* memory map for libraries */
 #define MAX_NAME_LEN 256
