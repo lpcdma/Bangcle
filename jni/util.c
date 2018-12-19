@@ -485,6 +485,88 @@ int find_libbase(pid_t pid, char *libn, unsigned long *addr) {
     return 0;
 }
 
+//尝试处理加密的so,
+//内存中未加密但是只能拿到.dynsym
+//.symtab目前只能通过soinfo拿到
+//7.0以上比较麻烦
+int find_name_dyn(pid_t pid, char *name, char *libn, unsigned long *addr) __attribute__((optnone)) {
+    struct mm mm[1000];
+    unsigned long libcaddr;
+    int nmm;
+    char libc[1024];
+    symtab_t s;
+
+    if (0 > load_memmap(pid, mm, &nmm)) {
+        log("cannot read memory map\n")
+        return -1;
+    }
+    if (0 > find_libname(libn, libc, sizeof(libc), &libcaddr, mm, nmm)) {
+        log("cannot find lib\n");
+        return -1;
+    }
+    *addr = libcaddr;
+    log("libcaddr ==> %x", libcaddr);
+    Elf32_Ehdr *ehdr = (Elf32_Ehdr *) libcaddr;
+    log("ehdr->e_phoff: 0x%x\n", ehdr->e_phoff);
+    log("ehdr->e_phnum: 0x%x\n", ehdr->e_phnum);
+
+    Elf32_Phdr *phdr = NULL;
+    for (int i = 0; i < ehdr->e_phnum; ++i) {
+        log("in for");
+        Elf32_Phdr *phdr_tmp = (Elf32_Phdr *) (libcaddr + ehdr->e_phoff + (sizeof(Elf32_Phdr) * i));
+        log("phdr_tmp->p_vaddr ==> 0x%x\n", phdr_tmp->p_vaddr);
+        if (phdr_tmp->p_type == 0x01) {
+            phdr = phdr_tmp;
+            break;
+        }
+    }
+    log("phdr->p_vaddr ==> 0x%x\n", phdr->p_vaddr);
+    Elf32_Addr va_fa_gap = phdr->p_vaddr;
+
+    Elf32_Phdr *phdr_dyn = NULL;
+    for (int i = 0; i < ehdr->e_phnum; ++i) {
+        log("in for");
+        Elf32_Phdr *phdr_tmp = (Elf32_Phdr *) (libcaddr + ehdr->e_phoff + (sizeof(Elf32_Phdr) * i));
+        log("phdr_tmp->p_vaddr ==> 0x%x\n", phdr_tmp->p_vaddr);
+        log("phdr_tmp->p_offset ==> 0x%x\n", phdr_tmp->p_offset);
+        if (phdr_tmp->p_type == PT_DYNAMIC) {
+            phdr_dyn = phdr_tmp;
+            break;
+        }
+    }
+    void* dyn_section = (void*)(libcaddr + phdr_dyn->p_offset + 0x1000);
+    log("dyn_section ==> %p", dyn_section);
+    Elf32_Sym *sym = NULL;
+    Elf32_Addr str = NULL;
+    Elf32_Sword dyn_str_size = NULL;
+    for (Elf32_Dyn *dyn = (Elf32_Dyn *)dyn_section; dyn->d_tag != DT_NULL; dyn++){
+        log("read dyn item flag=%x, value=0x%x", dyn->d_tag, dyn->d_un.d_val);
+        if (dyn->d_tag == DT_STRTAB) {
+            log("DT_STRTAB========================read dyn item flag=%d, value=0x%x", dyn->d_tag, dyn->d_un.d_ptr);
+            str = (Elf32_Addr)(libcaddr + dyn->d_un.d_val - va_fa_gap);
+        }
+        if (dyn->d_tag == DT_SYMTAB) {
+            log("DT_SYMTAB========================read dyn item flag=%d, value=0x%x", dyn->d_tag, dyn->d_un.d_ptr);
+            sym = (Elf32_Sym*)(libcaddr + dyn->d_un.d_val - va_fa_gap);
+        }
+        if (dyn->d_tag == DT_STRSZ) {
+            log("DT_STRSZ========================read dyn item flag=%d, value=0x%x", dyn->d_tag, dyn->d_un.d_val);
+            dyn_str_size = (Elf32_Sword)(dyn->d_un.d_val);
+        }
+    }
+    if (sym != NULL && str != NULL && dyn_str_size != NULL) {
+        int count = 0;
+        do {
+            log("sym->st_name ==> %s", (char*)(str + sym->st_name));
+            log("counte ==> %d", count++);
+        } while (++sym != NULL && sym->st_name >=0 && sym->st_name < dyn_str_size);
+    }
+    if (phdr != NULL && phdr->p_vaddr != 0) {
+        *addr -= va_fa_gap;
+    }
+    return 0;
+}
+
 // --------------------------------------------------------------
 #if 0
 
